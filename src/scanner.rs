@@ -97,14 +97,14 @@ pub fn scan_incremental(config: &ScanConfig, db: &mut ScanDatabase) -> ScanResul
         }
     }
 
-    // Delete removed files from database
+    // Delete removed files from database (move to deleted_files table first)
     if !result.deleted_paths.is_empty() {
         log::info!(
-            "Deleting {} files from database",
+            "Moving {} deleted files to deleted_files table",
             result.deleted_paths.len()
         );
-        if let Err(e) = db.delete_files(&result.deleted_paths) {
-            log::error!("Failed to delete files from database: {}", e);
+        if let Err(e) = db.move_to_deleted(&result.deleted_paths) {
+            log::error!("Failed to move deleted files: {}", e);
         }
     }
 

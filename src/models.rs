@@ -18,6 +18,8 @@ pub enum FileStatus {
     Unchanged,
     /// Deleted file (was in previous scan, now missing)
     Deleted,
+    /// Moved file (same hash, different path)
+    Moved,
 }
 
 impl FileStatus {
@@ -28,6 +30,7 @@ impl FileStatus {
             FileStatus::Modified => 'm',
             FileStatus::Unchanged => 'u',
             FileStatus::Deleted => 'd',
+            FileStatus::Moved => 'v', // 'v' for moVed
         }
     }
 
@@ -38,6 +41,7 @@ impl FileStatus {
             FileStatus::Modified => "modified",
             FileStatus::Unchanged => "unchanged",
             FileStatus::Deleted => "deleted",
+            FileStatus::Moved => "moved",
         }
     }
 }
@@ -115,9 +119,12 @@ pub struct ScannedFile {
     /// Whether the hash is a partial hash (for large files)
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub is_partial_hash: bool,
-    /// File status (new/modified/unchanged/deleted)
+    /// File status (new/modified/unchanged/deleted/moved)
     #[serde(skip_serializing_if = "is_default_status")]
     pub status: FileStatus,
+    /// Old path (for moved files)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_path: Option<String>,
 }
 
 fn is_default_status(status: &FileStatus) -> bool {
@@ -146,6 +153,7 @@ impl ScannedFile {
             hash: None,
             is_partial_hash: false,
             status: FileStatus::New,
+            old_path: None,
         }
     }
 
@@ -159,6 +167,12 @@ impl ScannedFile {
     /// Set the file status
     pub fn with_status(mut self, status: FileStatus) -> Self {
         self.status = status;
+        self
+    }
+
+    /// Set the old path (for moved files)
+    pub fn with_old_path(mut self, old_path: String) -> Self {
+        self.old_path = Some(old_path);
         self
     }
 

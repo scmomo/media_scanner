@@ -103,6 +103,10 @@ enum Commands {
         /// 显示扫描进度（输出到stderr，不影响JSON输出）
         #[arg(short = 'p', long)]
         progress: bool,
+
+        /// 清空已删除文件记录表
+        #[arg(long)]
+        clear_deleted: bool,
     },
 }
 
@@ -127,7 +131,30 @@ fn main() {
             no_recursive,
             max_depth,
             progress,
+            clear_deleted,
         }) => {
+            let db_path = db.unwrap_or_else(|| PathBuf::from("media_scanner.db"));
+
+            // Handle clear_deleted flag
+            if clear_deleted {
+                match ScanDatabase::open(&db_path) {
+                    Ok(mut scan_db) => {
+                        match scan_db.clear_deleted_files() {
+                            Ok(count) => {
+                                println!("已清空删除文件记录表，共删除 {} 条记录", count);
+                            }
+                            Err(e) => {
+                                eprintln!("清空删除文件记录表失败: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("无法打开数据库 {:?}: {}", db_path, e);
+                    }
+                }
+                return;
+            }
+
             info!("Starting media scan...");
             info!("Roots: {:?}", roots);
             info!(
@@ -143,8 +170,6 @@ fn main() {
             info!("Recursive: {}", !no_recursive);
             info!("Max depth: {}", max_depth);
             info!("Progress: {}", progress);
-
-            let db_path = db.unwrap_or_else(|| PathBuf::from("media_scanner.db"));
 
             let config = ScanConfig::builder()
                 .roots(roots)
