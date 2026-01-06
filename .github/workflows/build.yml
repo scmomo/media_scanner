@@ -20,29 +20,62 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux x86_64
+          # Linux x86_64 (64-bit AMD/Intel)
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             artifact_name: media_scanner
             asset_name: media-scanner-linux-x86_64
 
-          # Windows x86_64
+          # Linux i686 (32-bit)
+          - target: i686-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact_name: media_scanner
+            asset_name: media-scanner-linux-i686
+            cross: true
+
+          # Linux ARM64 (64-bit ARM)
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact_name: media_scanner
+            asset_name: media-scanner-linux-arm64
+            cross: true
+
+          # Linux ARMv7 (32-bit ARM)
+          - target: armv7-unknown-linux-gnueabihf
+            os: ubuntu-latest
+            artifact_name: media_scanner
+            asset_name: media-scanner-linux-armv7
+            cross: true
+
+          # Windows x86_64 (64-bit)
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             artifact_name: media_scanner.exe
             asset_name: media-scanner-windows-x86_64.exe
 
-          # macOS x86_64
-          - target: x86_64-apple-darwin
-            os: macos-15-large
-            artifact_name: media_scanner
-            asset_name: media-scanner-macos-x86_64
+          # Windows i686 (32-bit)
+          - target: i686-pc-windows-msvc
+            os: windows-latest
+            artifact_name: media_scanner.exe
+            asset_name: media-scanner-windows-i686.exe
+
+          # Windows ARM64
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            artifact_name: media_scanner.exe
+            asset_name: media-scanner-windows-arm64.exe
 
           # macOS ARM64 (Apple Silicon)
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact_name: media_scanner
             asset_name: media-scanner-macos-arm64
+
+          # macOS x86_64 (Intel) - cross compile on ARM
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact_name: media_scanner
+            asset_name: media-scanner-macos-x86_64
 
     steps:
       - name: Checkout code
@@ -54,14 +87,24 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
 
-      - name: Build
+      - name: Install cross (for cross-compilation)
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build (native)
+        if: ${{ !matrix.cross }}
         run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
           path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          if-no-files-found: error
 
   test:
     name: Test
