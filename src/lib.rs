@@ -6,11 +6,13 @@
 #![allow(dead_code)]
 
 pub mod config;
+pub mod db;
 pub mod error;
 pub mod models;
 pub mod scanner;
 
 pub use config::ScanConfig;
+pub use db::ScanDatabase;
 pub use error::{ScanError, ScanErrorKind};
-pub use models::{MediaType, ScanProgress, ScanResult, ScannedFile};
-pub use scanner::scan_full;
+pub use models::{CompactFile, MediaType, ScanProgress, ScanResult, ScannedDirectory, ScannedFile};
+pub use scanner::{scan_full, scan_incremental};

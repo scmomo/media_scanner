@@ -47,8 +47,12 @@ media_scanner scan --roots <目录路径>
 | `--threads` | `-t` | 并行线程数（0 = 自动检测） | 0 |
 | `--batch-size` | `-b` | 数据库批量写入大小 | 1000 |
 | `--db` | `-d` | 数据库文件路径 | media_scanner.db |
+| `--output` | `-o` | 输出结果到文件 | - |
 | `--incremental` | `-i` | 执行增量扫描 | false |
-| `--json` | - | 以 JSON 格式输出结果 | false |
+| `--json` | - | 以 JSON 格式输出结果（完整） | false |
+| `--ndjson` | - | 以 NDJSON 格式输出（每行一个文件） | false |
+| `--compact` | - | 紧凑格式（按目录分组，字段缩写，推荐大量文件） | false |
+| `--progress` | `-p` | 显示扫描进度（输出到stderr） | false |
 | `--no-hash` | - | 跳过文件哈希计算 | false |
 | `--no-recursive` | - | 禁用递归扫描（只扫描根目录） | false |
 | `--max-depth` | - | 最大扫描深度 | 3 |
@@ -89,13 +93,36 @@ media_scanner scan --roots /path/to/media --db /path/to/output.db
 #### 5. 增量扫描（只处理变化的文件）
 
 ```bash
-media_scanner scan --roots /path/to/media --incremental
+# 首次扫描：记录所有文件到数据库
+media_scanner scan --roots /path/to/media
+
+# 后续扫描：只输出变化的文件（新增/修改/删除）
+media_scanner scan --roots /path/to/media --incremental --compact
 ```
+
+增量扫描工作原理：
+1. 首次扫描时，所有文件信息保存到 SQLite 数据库
+2. 后续扫描时，通过 size + mtime 快速判断文件是否变化
+3. 只有变化的文件才重新计算 hash
+4. 输出只包含：新增文件、修改文件、删除文件
 
 #### 6. JSON 格式输出
 
 ```bash
+# 完整 JSON（适合小量文件）
 media_scanner scan --roots /path/to/media --json
+
+# NDJSON 流式输出（每行一个文件）
+media_scanner scan --roots /path/to/media --ndjson
+
+# 紧凑格式（按目录分组，推荐大量文件 10万+）
+media_scanner scan --roots /path/to/media --compact
+
+# 输出到文件（避免 stdout 缓冲问题）
+media_scanner scan --roots /path/to/media --compact -o result.ndjson
+
+# 显示扫描进度（进度输出到stderr，不影响JSON）
+media_scanner scan --roots /path/to/media --compact --progress
 ```
 
 #### 7. 高性能扫描配置
@@ -140,17 +167,19 @@ mp3, flac, wav, aac, ogg, wma, m4a
 ### 控制台输出
 
 ```
-Scan completed:
-  Total files: 12345
-  Total dirs: 678
-  New files: 100
-  Modified files: 50
-  Deleted files: 10
-  Errors: 2
-  Duration: 5432ms
+扫描完成:
+  媒体文件数: 12345
+  目录数: 678
+  新文件: 100
+  修改文件: 50
+  删除文件: 10
+  错误数: 2
+  耗时: 5432ms
 ```
 
-### JSON 输出
+### JSON 输出 (`--json`)
+
+完整 JSON 格式，包含所有文件信息，适合小量文件：
 
 ```json
 {
@@ -159,8 +188,148 @@ Scan completed:
   "new_files": 100,
   "modified_files": 50,
   "deleted_files": 10,
+  "files": [
+    {
+      "path": "/path/to/video.mp4",
+      "name": "video.mp4",
+      "size": 1234567890,
+      "mtime": 1704067200,
+      "ctime": 1704067200,
+      "extension": "mp4",
+      "media_type": "video",
+      "hash": "abc123...",
+      "is_partial_hash": false
+    }
+  ],
   "duration_ms": 5432
 }
+```
+
+### NDJSON 输出 (`--ndjson`)
+
+每行一个 JSON 对象，适合流式处理：
+
+```
+{"_type":"summary","total_files":12345,"total_dirs":678,"new_files":100,"modified_files":50,"deleted_files":10,"error_count":2,"duration_ms":5432}
+{"name":"video1.mp4","size":1234567890,"mtime":1704067200,"ctime":1704067200,"extension":"mp4","media_type":"video","hash":"abc123..."}
+{"name":"video2.mkv","size":987654321,"mtime":1704067300,"ctime":1704067300,"extension":"mkv","media_type":"video","hash":"def456..."}
+```
+
+### 紧凑格式输出 (`--compact`) - 推荐大量文件
+
+按目录分组，字段使用缩写，大幅减少数据量：
+
+```
+{"_t":"s","tf":12345,"td":678,"nf":100,"ec":2,"ms":5432}
+{"path":"/media/videos/2024","files":[{"n":"movie1.mp4","s":1234567890,"m":1704067200,"t":"v","h":"abc123"},{"n":"movie2.mkv","s":987654321,"m":1704067300,"t":"v"}]}
+{"path":"/media/photos","files":[{"n":"photo1.jpg","s":2048000,"m":1704067400,"t":"i"},{"n":"photo2.png","s":1024000,"m":1704067500,"t":"i"}]}
+```
+
+**字段缩写说明：**
+| 缩写 | 完整名称 | 说明 |
+|------|----------|------|
+| `_t` | type | 类型标识 (s=summary, d=deleted) |
+| `tf` | total_files | 总文件数 |
+| `td` | total_dirs | 总目录数 |
+| `nf` | new_files | 新文件数 |
+| `mf` | modified_files | 修改文件数 |
+| `df` | deleted_files | 删除文件数 |
+| `ec` | error_count | 错误数 |
+| `ms` | duration_ms | 耗时(毫秒) |
+| `n` | name | 文件名 |
+| `s` | size | 文件大小 |
+| `m` | mtime | 修改时间 |
+| `t` | type | 媒体类型 (v/i/a/u) |
+| `h` | hash | 文件哈希 |
+
+**媒体类型缩写：** v=video, i=image, a=audio, u=unknown
+
+**进度输出示例（stderr）：**
+```
+{"_t":"p","f":1000,"d":50,"v":800,"i":150,"a":50,"dir":"/media/videos/2024","ms":2500}
+{"_t":"p","f":2000,"d":100,"v":1600,"i":300,"a":100,"dir":"/media/photos","ms":5000}
+{"_t":"p","f":3000,"d":150,"v":2400,"i":450,"a":150,"dir":"完成","ms":7500}
+```
+
+**进度字段说明：**
+| 字段 | 说明 |
+|------|------|
+| `_t` | 类型 (p=progress) |
+| `f` | 已扫描文件数 |
+| `d` | 已扫描目录数 |
+| `v` | 视频文件数 |
+| `i` | 图片文件数 |
+| `a` | 音频文件数 |
+| `dir` | 当前扫描目录 |
+| `ms` | 已用时间(毫秒) |
+
+**增量扫描输出示例：**
+```
+{"_t":"s","tf":12345,"td":678,"nf":5,"mf":3,"df":2,"ec":0,"ms":150}
+{"path":"/media/videos/2024","files":[{"n":"new_movie.mp4","s":1234567890,"m":1704067200,"t":"v","h":"abc123"}]}
+{"_t":"d","paths":["/media/videos/old/deleted1.mp4","/media/videos/old/deleted2.mkv"]}
+```
+
+### Python 读取示例
+
+```python
+import subprocess
+import json
+import os
+import sys
+import threading
+
+def read_progress(process):
+    """读取进度信息（从stderr）"""
+    for line in process.stderr:
+        try:
+            data = json.loads(line.strip())
+            if data.get('_t') == 'p':
+                print(f"\r扫描中: {data['f']}文件, {data['v']}视频, {data['i']}图片, {data['a']}音频 - {data['dir'][:50]}", end='', file=sys.stderr)
+        except:
+            pass
+
+# 方式1: 带进度显示的扫描
+process = subprocess.Popen(
+    ['media_scanner', 'scan', '-r', '/path/to/media', '--compact', '--progress'],
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True
+)
+
+# 启动进度读取线程
+progress_thread = threading.Thread(target=read_progress, args=(process,))
+progress_thread.start()
+
+# 读取结果（从stdout）
+added_files = []
+deleted_files = []
+
+for line in process.stdout:
+    data = json.loads(line.strip())
+    
+    if data.get('_t') == 's':
+        print(f"\n扫描完成: 新增{data['nf']}, 修改{data['mf']}, 删除{data['df']}")
+    elif data.get('_t') == 'd':
+        deleted_files.extend(data['paths'])
+    elif 'path' in data:
+        dir_path = data['path']
+        for f in data['files']:
+            added_files.append(os.path.join(dir_path, f['n']))
+
+progress_thread.join()
+process.wait()
+
+# 方式2: 简单增量扫描（无进度）
+result = subprocess.run(
+    ['media_scanner', 'scan', '-r', '/path/to/media', '--incremental', '--compact'],
+    capture_output=True, text=True
+)
+
+for line in result.stdout.strip().split('\n'):
+    data = json.loads(line)
+    if data.get('_t') == 's':
+        print(f"新增: {data['nf']}, 修改: {data['mf']}, 删除: {data['df']}")
 ```
 
 ## 数据库结构

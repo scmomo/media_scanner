@@ -58,7 +58,8 @@ impl std::fmt::Display for MediaType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScannedFile {
     /// Full path to the file
-    pub path: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<PathBuf>,
     /// File name without path
     pub name: String,
     /// File size in bytes
@@ -72,8 +73,10 @@ pub struct ScannedFile {
     /// Inferred media type
     pub media_type: MediaType,
     /// File hash (MD5 or partial hash)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hash: Option<String>,
     /// Whether the hash is a partial hash (for large files)
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub is_partial_hash: bool,
 }
 
@@ -89,7 +92,7 @@ impl ScannedFile {
     ) -> Self {
         let media_type = MediaType::from_extension(&extension);
         Self {
-            path,
+            path: Some(path),
             name,
             size,
             mtime,
@@ -107,6 +110,58 @@ impl ScannedFile {
         self.is_partial_hash = is_partial;
         self
     }
+
+    /// Get full path (for internal use)
+    pub fn full_path(&self) -> Option<&PathBuf> {
+        self.path.as_ref()
+    }
+}
+
+/// Represents a directory with its files (compact format)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScannedDirectory {
+    /// Directory path
+    pub path: String,
+    /// Files in this directory
+    pub files: Vec<CompactFile>,
+}
+
+/// Compact file representation (without directory path)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompactFile {
+    /// File name only
+    #[serde(rename = "n")]
+    pub name: String,
+    /// File size in bytes
+    #[serde(rename = "s")]
+    pub size: u64,
+    /// Modification time as Unix timestamp
+    #[serde(rename = "m")]
+    pub mtime: i64,
+    /// Media type (v=video, i=image, a=audio, u=unknown)
+    #[serde(rename = "t")]
+    pub media_type: char,
+    /// File hash (optional)
+    #[serde(rename = "h", skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+}
+
+impl CompactFile {
+    /// Create from ScannedFile
+    pub fn from_scanned(file: &ScannedFile) -> Self {
+        Self {
+            name: file.name.clone(),
+            size: file.size,
+            mtime: file.mtime,
+            media_type: match file.media_type {
+                MediaType::Video => 'v',
+                MediaType::Image => 'i',
+                MediaType::Audio => 'a',
+                MediaType::Unknown => 'u',
+            },
+            hash: file.hash.clone(),
+        }
+    }
 }
 
 /// Result of a scan operation
@@ -122,6 +177,12 @@ pub struct ScanResult {
     pub modified_files: u64,
     /// Number of deleted files (for incremental scans)
     pub deleted_files: u64,
+    /// List of scanned files with metadata (new + modified only in incremental mode)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<ScannedFile>,
+    /// List of deleted file paths (incremental mode only)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub deleted_paths: Vec<String>,
     /// Errors encountered during scanning
     #[serde(skip)]
     pub errors: Vec<ScanError>,

@@ -56,6 +56,9 @@ pub struct ScanConfig {
     /// Maximum depth for recursive scanning
     /// Default is 3 levels
     pub max_depth: usize,
+
+    /// Whether to show progress output to stderr
+    pub show_progress: bool,
 }
 
 impl Default for ScanConfig {
@@ -72,6 +75,7 @@ impl Default for ScanConfig {
             db_path: None,
             recursive: true,
             max_depth: DEFAULT_MAX_DEPTH,
+            show_progress: false,
         }
     }
 }
@@ -284,6 +288,12 @@ impl ScanConfigBuilder {
     /// Default is 3 levels
     pub fn max_depth(mut self, depth: usize) -> Self {
         self.config.max_depth = depth;
+        self
+    }
+
+    /// Enable or disable progress output
+    pub fn show_progress(mut self, enabled: bool) -> Self {
+        self.config.show_progress = enabled;
         self
     }
 
