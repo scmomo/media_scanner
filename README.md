@@ -179,29 +179,43 @@ mp3, flac, wav, aac, ogg, wma, m4a
 
 ### JSON 输出 (`--json`)
 
-完整 JSON 格式，包含所有文件信息，适合小量文件：
+目录树结构的完整 JSON，支持 `-o` 输出到文件：
+
+```bash
+# 输出到控制台
+media_scanner scan --roots /path/to/media --json
+
+# 输出到文件
+media_scanner scan --roots /path/to/media --json -o result.json
+```
 
 ```json
 {
-  "total_files": 12345,
-  "total_dirs": 678,
-  "new_files": 100,
-  "modified_files": 50,
-  "deleted_files": 10,
-  "files": [
+  "summary": {
+    "total_files": 12345,
+    "total_dirs": 678,
+    "new_files": 100,
+    "modified_files": 50,
+    "deleted_files": 10,
+    "error_count": 2,
+    "duration_ms": 5432
+  },
+  "directories": [
     {
-      "path": "/path/to/video.mp4",
-      "name": "video.mp4",
-      "size": 1234567890,
-      "mtime": 1704067200,
-      "ctime": 1704067200,
-      "extension": "mp4",
-      "media_type": "video",
-      "hash": "abc123...",
-      "is_partial_hash": false
+      "path": "/media/videos/2024",
+      "files": [
+        {"n": "movie1.mp4", "s": 1234567890, "m": 1704067200, "t": "v", "h": "abc123"},
+        {"n": "movie2.mkv", "s": 987654321, "m": 1704067300, "t": "v"}
+      ]
+    },
+    {
+      "path": "/media/photos",
+      "files": [
+        {"n": "photo1.jpg", "s": 2048000, "m": 1704067400, "t": "i"}
+      ]
     }
   ],
-  "duration_ms": 5432
+  "deleted": ["/media/old/deleted.mp4"]
 }
 ```
 

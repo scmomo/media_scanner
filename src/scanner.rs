@@ -10,7 +10,7 @@ use walkdir::WalkDir;
 use crate::config::ScanConfig;
 use crate::db::{FileRecord, ScanDatabase};
 use crate::error::{ScanError, ScanErrorKind};
-use crate::models::{MediaType, ScanResult, ScannedFile};
+use crate::models::{FileStatus, MediaType, ScanResult, ScannedFile};
 
 /// Progress callback type
 pub type ProgressCallback = Box<dyn Fn(&ScanProgress) + Send + Sync>;
@@ -103,6 +103,7 @@ fn scan_internal(
     let total_dirs = AtomicU64::new(0);
     let new_files = AtomicU64::new(0);
     let modified_files = AtomicU64::new(0);
+    let unchanged_files = AtomicU64::new(0);
     let video_count = AtomicU64::new(0);
     let image_count = AtomicU64::new(0);
     let audio_count = AtomicU64::new(0);
@@ -165,15 +166,22 @@ fn scan_internal(
                                     .map(|d| d.as_secs() as i64)
                                     .unwrap_or(0);
 
-                                // File unchanged - skip
+                                // File unchanged - skip detailed processing
                                 if record.size == current_size && record.mtime == current_mtime {
                                     total_files.fetch_add(1, Ordering::Relaxed);
+                                    unchanged_files.fetch_add(1, Ordering::Relaxed);
                                     continue;
                                 }
 
                                 // File modified - process and mark
                                 if let Some(scanned) = process_file(path, config) {
-                                    update_media_counts(&scanned.media_type, &video_count, &image_count, &audio_count);
+                                    let scanned = scanned.with_status(FileStatus::Modified);
+                                    update_media_counts(
+                                        &scanned.media_type,
+                                        &video_count,
+                                        &image_count,
+                                        &audio_count,
+                                    );
                                     files.push(scanned);
                                     total_files.fetch_add(1, Ordering::Relaxed);
                                     modified_files.fetch_add(1, Ordering::Relaxed);
@@ -184,7 +192,17 @@ fn scan_internal(
 
                         // New file or full scan mode
                         if let Some(scanned) = process_file(path, config) {
-                            update_media_counts(&scanned.media_type, &video_count, &image_count, &audio_count);
+                            let scanned = if file_index.is_some() {
+                                scanned.with_status(FileStatus::New)
+                            } else {
+                                scanned
+                            };
+                            update_media_counts(
+                                &scanned.media_type,
+                                &video_count,
+                                &image_count,
+                                &audio_count,
+                            );
                             files.push(scanned);
                             total_files.fetch_add(1, Ordering::Relaxed);
                             if file_index.is_some() {
@@ -193,7 +211,9 @@ fn scan_internal(
                         }
 
                         // Report progress periodically
-                        if show_progress && last_progress_time.elapsed().as_millis() >= progress_interval_ms {
+                        if show_progress
+                            && last_progress_time.elapsed().as_millis() >= progress_interval_ms
+                        {
                             let progress = ScanProgress {
                                 scanned_files: total_files.load(Ordering::Relaxed),
                                 scanned_dirs: total_dirs.load(Ordering::Relaxed),
@@ -265,6 +285,7 @@ fn scan_internal(
         total_dirs: total_dirs.load(Ordering::Relaxed),
         new_files: new_count,
         modified_files: modified_files.load(Ordering::Relaxed),
+        unchanged_files: unchanged_files.load(Ordering::Relaxed),
         deleted_files: deleted_count,
         files,
         deleted_paths,

@@ -14,5 +14,7 @@ pub mod scanner;
 pub use config::ScanConfig;
 pub use db::ScanDatabase;
 pub use error::{ScanError, ScanErrorKind};
-pub use models::{CompactFile, MediaType, ScanProgress, ScanResult, ScannedDirectory, ScannedFile};
+pub use models::{
+    CompactFile, FileStatus, MediaType, ScanProgress, ScanResult, ScannedDirectory, ScannedFile,
+};
 pub use scanner::{scan_full, scan_incremental};

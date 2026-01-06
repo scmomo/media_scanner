@@ -10,7 +10,9 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
-use media_scanner::{scan_full, scan_incremental, CompactFile, ScanConfig, ScanDatabase, ScannedDirectory};
+use media_scanner::{
+    scan_full, scan_incremental, CompactFile, ScanConfig, ScanDatabase, ScannedDirectory,
+};
 
 const ABOUT: &str = r#"
 Media Scanner - 高性能媒体文件扫描器
@@ -215,6 +217,7 @@ fn main() {
                     "td": result.total_dirs,
                     "nf": result.new_files,
                     "mf": result.modified_files,
+                    "uf": result.unchanged_files,
                     "df": result.deleted_files,
                     "ec": result.error_count(),
                     "ms": result.duration_ms
@@ -260,12 +263,13 @@ fn main() {
                     "total_dirs": result.total_dirs,
                     "new_files": result.new_files,
                     "modified_files": result.modified_files,
+                    "unchanged_files": result.unchanged_files,
                     "deleted_files": result.deleted_files,
                     "error_count": result.error_count(),
                     "duration_ms": result.duration_ms
                 });
                 writeln!(writer, "{}", stats).ok();
-                
+
                 // 每个文件一行 (新增+修改)
                 for file in &result.files {
                     if let Ok(line) = serde_json::to_string(file) {
@@ -282,8 +286,47 @@ fn main() {
                     writeln!(writer, "{}", deleted).ok();
                 }
             } else if json {
-                // 完整 JSON 格式
-                writeln!(writer, "{}", serde_json::to_string_pretty(&result).unwrap()).ok();
+                // JSON 格式：目录树结构，适合完整输出
+                // 按目录分组
+                let mut dirs: HashMap<String, Vec<CompactFile>> = HashMap::new();
+                for file in &result.files {
+                    if let Some(path) = file.full_path() {
+                        let dir = path
+                            .parent()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        dirs.entry(dir)
+                            .or_default()
+                            .push(CompactFile::from_scanned(file));
+                    }
+                }
+
+                let directories: Vec<ScannedDirectory> = dirs
+                    .into_iter()
+                    .map(|(path, files)| ScannedDirectory { path, files })
+                    .collect();
+
+                let output_json = serde_json::json!({
+                    "summary": {
+                        "total_files": result.total_files,
+                        "total_dirs": result.total_dirs,
+                        "new_files": result.new_files,
+                        "modified_files": result.modified_files,
+                        "unchanged_files": result.unchanged_files,
+                        "deleted_files": result.deleted_files,
+                        "error_count": result.error_count(),
+                        "duration_ms": result.duration_ms
+                    },
+                    "directories": directories,
+                    "deleted": result.deleted_paths
+                });
+
+                writeln!(
+                    writer,
+                    "{}",
+                    serde_json::to_string_pretty(&output_json).unwrap()
+                )
+                .ok();
             } else {
                 // 人类可读格式
                 writeln!(writer, "扫描完成:").ok();
@@ -291,6 +334,7 @@ fn main() {
                 writeln!(writer, "  目录数: {}", result.total_dirs).ok();
                 writeln!(writer, "  新文件: {}", result.new_files).ok();
                 writeln!(writer, "  修改文件: {}", result.modified_files).ok();
+                writeln!(writer, "  未更改: {}", result.unchanged_files).ok();
                 writeln!(writer, "  删除文件: {}", result.deleted_files).ok();
                 writeln!(writer, "  错误数: {}", result.error_count()).ok();
                 writeln!(writer, "  耗时: {}ms", result.duration_ms).ok();
@@ -298,8 +342,8 @@ fn main() {
 
             writer.flush().ok();
 
-            if output.is_some() {
-                println!("结果已保存到: {:?}", output.unwrap());
+            if let Some(path) = output {
+                println!("结果已保存到: {:?}", path);
             }
         }
         None => {

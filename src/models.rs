@@ -5,6 +5,43 @@ use std::path::PathBuf;
 
 use crate::error::ScanError;
 
+/// File status in incremental scan
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum FileStatus {
+    /// New file (not in previous scan)
+    #[default]
+    New,
+    /// Modified file (size or mtime changed)
+    Modified,
+    /// Unchanged file (same as previous scan)
+    Unchanged,
+    /// Deleted file (was in previous scan, now missing)
+    Deleted,
+}
+
+impl FileStatus {
+    /// Get short code for compact output
+    pub fn as_char(&self) -> char {
+        match self {
+            FileStatus::New => 'n',
+            FileStatus::Modified => 'm',
+            FileStatus::Unchanged => 'u',
+            FileStatus::Deleted => 'd',
+        }
+    }
+
+    /// Get string representation
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FileStatus::New => "new",
+            FileStatus::Modified => "modified",
+            FileStatus::Unchanged => "unchanged",
+            FileStatus::Deleted => "deleted",
+        }
+    }
+}
+
 /// Media type classification
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -78,6 +115,13 @@ pub struct ScannedFile {
     /// Whether the hash is a partial hash (for large files)
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub is_partial_hash: bool,
+    /// File status (new/modified/unchanged/deleted)
+    #[serde(skip_serializing_if = "is_default_status")]
+    pub status: FileStatus,
+}
+
+fn is_default_status(status: &FileStatus) -> bool {
+    *status == FileStatus::New
 }
 
 impl ScannedFile {
@@ -101,6 +145,7 @@ impl ScannedFile {
             media_type,
             hash: None,
             is_partial_hash: false,
+            status: FileStatus::New,
         }
     }
 
@@ -108,6 +153,12 @@ impl ScannedFile {
     pub fn with_hash(mut self, hash: String, is_partial: bool) -> Self {
         self.hash = Some(hash);
         self.is_partial_hash = is_partial;
+        self
+    }
+
+    /// Set the file status
+    pub fn with_status(mut self, status: FileStatus) -> Self {
+        self.status = status;
         self
     }
 
@@ -141,9 +192,16 @@ pub struct CompactFile {
     /// Media type (v=video, i=image, a=audio, u=unknown)
     #[serde(rename = "t")]
     pub media_type: char,
+    /// File status (n=new, m=modified, u=unchanged)
+    #[serde(rename = "st", skip_serializing_if = "is_new_status_char")]
+    pub status: char,
     /// File hash (optional)
     #[serde(rename = "h", skip_serializing_if = "Option::is_none")]
     pub hash: Option<String>,
+}
+
+fn is_new_status_char(c: &char) -> bool {
+    *c == 'n'
 }
 
 impl CompactFile {
@@ -159,6 +217,7 @@ impl CompactFile {
                 MediaType::Audio => 'a',
                 MediaType::Unknown => 'u',
             },
+            status: file.status.as_char(),
             hash: file.hash.clone(),
         }
     }
@@ -175,6 +234,8 @@ pub struct ScanResult {
     pub new_files: u64,
     /// Number of modified files (for incremental scans)
     pub modified_files: u64,
+    /// Number of unchanged files (for incremental scans)
+    pub unchanged_files: u64,
     /// Number of deleted files (for incremental scans)
     pub deleted_files: u64,
     /// List of scanned files with metadata (new + modified only in incremental mode)
