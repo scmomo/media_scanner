@@ -1,6 +1,5 @@
 //! Scanner module - implements the actual file scanning logic
 
-use rayon::prelude::*;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
@@ -8,7 +7,7 @@ use walkdir::WalkDir;
 
 use crate::config::ScanConfig;
 use crate::error::{ScanError, ScanErrorKind};
-use crate::models::{MediaType, ScanResult, ScannedFile};
+use crate::models::{ScanResult, ScannedFile};
 
 /// Perform a full scan of the configured directories
 pub fn scan_full(config: &ScanConfig) -> ScanResult {
@@ -187,8 +186,7 @@ fn compute_file_hash(path: &Path, large_file_threshold: u64) -> Option<(String, 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::path::PathBuf;
+    use crate::models::MediaType;
 
     #[test]
     fn test_media_type_detection() {
