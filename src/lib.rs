@@ -3,6 +3,8 @@
 //! This library provides efficient scanning and indexing of media files
 //! using parallel processing with rayon and walkdir.
 
+#![allow(dead_code)]
+
 pub mod config;
 pub mod error;
 pub mod models;

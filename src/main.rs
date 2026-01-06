@@ -93,9 +93,12 @@ fn main() {
                 .compute_hash(!no_hash)
                 .recursive(!no_recursive)
                 .max_depth(max_depth)
+                .db_path(db.unwrap_or_else(|| PathBuf::from("media_scanner.db")))
                 .build();
 
             // TODO: Implement actual scanning in later tasks
+            // For now, just log the config to avoid unused variable warning
+            info!("Config: {:?}", config);
             let result = ScanResult::new();
 
             if json {
