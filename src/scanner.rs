@@ -11,6 +11,7 @@ use crate::config::ScanConfig;
 use crate::db::{FileRecord, ScanDatabase};
 use crate::error::{ScanError, ScanErrorKind};
 use crate::models::{FileStatus, MediaType, ScanResult, ScannedFile};
+use crate::progress::{ProgressReporter, ScanPhase};
 
 /// Progress callback type
 pub type ProgressCallback = Box<dyn Fn(&ScanProgress) + Send + Sync>;
@@ -32,6 +33,10 @@ pub struct ScanProgress {
     pub current_dir: String,
     /// Elapsed time in milliseconds
     pub elapsed_ms: u64,
+    /// Current scan phase
+    pub phase: ScanPhase,
+    /// Estimated total files (for progress calculation)
+    pub estimated_total: Option<u64>,
 }
 
 impl ScanProgress {
@@ -49,6 +54,23 @@ impl ScanProgress {
         });
         eprintln!("{}", json);
         std::io::stderr().flush().ok();
+    }
+
+    /// Calculate estimated remaining time in milliseconds
+    ///
+    /// Returns None if:
+    /// - No files have been scanned yet
+    /// - No time has elapsed
+    /// - No estimated total is available
+    pub fn estimated_remaining_ms(&self) -> Option<u64> {
+        if self.scanned_files == 0 || self.elapsed_ms == 0 {
+            return None;
+        }
+        self.estimated_total.map(|total| {
+            let rate = self.scanned_files as f64 / self.elapsed_ms as f64;
+            let remaining = total.saturating_sub(self.scanned_files);
+            (remaining as f64 / rate) as u64
+        })
     }
 }
 
@@ -130,14 +152,20 @@ fn scan_internal(
     let mut files = Vec::new();
     let mut seen_paths: HashSet<String> = HashSet::new();
 
+    // Create progress reporter
+    let progress_reporter = ProgressReporter::new(show_progress, config.progress_interval_ms);
+
+    // Report scan start
+    progress_reporter.report_start(config);
+
     // Progress tracking
-    let mut last_progress_time = Instant::now();
     let mut current_dir = String::new();
-    let progress_interval_ms = 500; // Report every 500ms
 
     for root in &config.roots {
         if !root.exists() {
-            errors.push(ScanError::not_found(root.clone()));
+            let error = ScanError::not_found(root.clone());
+            progress_reporter.report_error(&error);
+            errors.push(error);
             continue;
         }
 
@@ -243,22 +271,19 @@ fn scan_internal(
                             }
                         }
 
-                        // Report progress periodically
-                        if show_progress
-                            && last_progress_time.elapsed().as_millis() >= progress_interval_ms
-                        {
-                            let progress = ScanProgress {
-                                scanned_files: total_files.load(Ordering::Relaxed),
-                                scanned_dirs: total_dirs.load(Ordering::Relaxed),
-                                video_count: video_count.load(Ordering::Relaxed),
-                                image_count: image_count.load(Ordering::Relaxed),
-                                audio_count: audio_count.load(Ordering::Relaxed),
-                                current_dir: current_dir.clone(),
-                                elapsed_ms: start.elapsed().as_millis() as u64,
-                            };
-                            progress.print_to_stderr();
-                            last_progress_time = Instant::now();
-                        }
+                        // Report progress periodically using ProgressReporter
+                        let progress = ScanProgress {
+                            scanned_files: total_files.load(Ordering::Relaxed),
+                            scanned_dirs: total_dirs.load(Ordering::Relaxed),
+                            video_count: video_count.load(Ordering::Relaxed),
+                            image_count: image_count.load(Ordering::Relaxed),
+                            audio_count: audio_count.load(Ordering::Relaxed),
+                            current_dir: current_dir.clone(),
+                            elapsed_ms: start.elapsed().as_millis() as u64,
+                            phase: ScanPhase::Scan,
+                            estimated_total: None,
+                        };
+                        progress_reporter.report_progress(&progress);
                     }
                 }
                 Err(e) => {
@@ -270,7 +295,9 @@ fn scan_internal(
                     } else {
                         ScanErrorKind::IoError
                     };
-                    errors.push(ScanError::new(kind, path, e.to_string()));
+                    let error = ScanError::new(kind, path, e.to_string());
+                    progress_reporter.report_error(&error);
+                    errors.push(error);
                 }
             }
         }
@@ -299,21 +326,8 @@ fn scan_internal(
         total
     };
 
-    // Final progress report
-    if show_progress {
-        let progress = ScanProgress {
-            scanned_files: total,
-            scanned_dirs: total_dirs.load(Ordering::Relaxed),
-            video_count: video_count.load(Ordering::Relaxed),
-            image_count: image_count.load(Ordering::Relaxed),
-            audio_count: audio_count.load(Ordering::Relaxed),
-            current_dir: "完成".to_string(),
-            elapsed_ms: duration.as_millis() as u64,
-        };
-        progress.print_to_stderr();
-    }
-
-    ScanResult {
+    // Build the scan result
+    let result = ScanResult {
         total_files: total,
         total_dirs: total_dirs.load(Ordering::Relaxed),
         new_files: new_count,
@@ -324,7 +338,12 @@ fn scan_internal(
         deleted_paths,
         errors,
         duration_ms: duration.as_millis() as u64,
-    }
+    };
+
+    // Report scan completion
+    progress_reporter.report_done(&result);
+
+    result
 }
 
 /// Update media type counters

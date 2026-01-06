@@ -22,11 +22,13 @@ Media Scanner - 高性能媒体文件扫描器
   media_scanner scan -r /videos -r /photos          扫描多个目录
   media_scanner scan -r /media --max-depth 5        扫描5层深度
   media_scanner scan -r /media --no-recursive       只扫描根目录
+  media_scanner scan -r /media --hash               启用文件哈希计算
   media_scanner scan -r /media --json               JSON格式输出（完整）
   media_scanner scan -r /media --ndjson             NDJSON流式输出（每行一个文件）
   media_scanner scan -r /media --compact            紧凑格式（按目录分组，推荐）
   media_scanner scan -r /media -o result.json       输出到文件
   media_scanner scan -r /media -d output.db         指定数据库文件
+  media_scanner scan -r /media -p --progress-interval 500  自定义进度报告间隔
 
 更多信息请查看: https://github.com/your-repo/media-scanner
 "#;
@@ -88,9 +90,9 @@ enum Commands {
         #[arg(short = 'o', long)]
         output: Option<PathBuf>,
 
-        /// 跳过文件哈希计算
+        /// 计算文件哈希（默认不计算）
         #[arg(long)]
-        no_hash: bool,
+        hash: bool,
 
         /// 禁用递归扫描（只扫描根目录）
         #[arg(long)]
@@ -103,6 +105,10 @@ enum Commands {
         /// 显示扫描进度（输出到stderr，不影响JSON输出）
         #[arg(short = 'p', long)]
         progress: bool,
+
+        /// 进度报告间隔（毫秒）
+        #[arg(long, default_value = "200")]
+        progress_interval: u64,
 
         /// 清空已删除文件记录表
         #[arg(long)]
@@ -127,10 +133,11 @@ fn main() {
             ndjson,
             compact,
             output,
-            no_hash,
+            hash,
             no_recursive,
             max_depth,
             progress,
+            progress_interval,
             clear_deleted,
         }) => {
             let db_path = db.unwrap_or_else(|| PathBuf::from("media_scanner.db"));
@@ -175,10 +182,11 @@ fn main() {
                 .roots(roots)
                 .num_threads(threads)
                 .batch_size(batch_size)
-                .compute_hash(!no_hash)
+                .compute_hash(hash)
                 .recursive(!no_recursive)
                 .max_depth(max_depth)
                 .show_progress(progress)
+                .progress_interval_ms(progress_interval)
                 .build();
 
             info!("Config: {:?}", config);

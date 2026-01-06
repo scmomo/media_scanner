@@ -16,6 +16,9 @@ pub const DEFAULT_CHECKPOINT_INTERVAL: u64 = 5000;
 /// Default max depth for recursive scanning
 pub const DEFAULT_MAX_DEPTH: usize = 3;
 
+/// Default progress reporting interval in milliseconds
+pub const DEFAULT_PROGRESS_INTERVAL_MS: u64 = 200;
+
 /// Configuration for the scanner
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanConfig {
@@ -59,6 +62,9 @@ pub struct ScanConfig {
 
     /// Whether to show progress output to stderr
     pub show_progress: bool,
+
+    /// Progress reporting interval in milliseconds
+    pub progress_interval_ms: u64,
 }
 
 impl Default for ScanConfig {
@@ -67,7 +73,7 @@ impl Default for ScanConfig {
             roots: Vec::new(),
             extensions: Self::default_extensions(),
             ignore_dirs: Self::default_ignore_dirs(),
-            compute_hash: true,
+            compute_hash: false,
             large_file_threshold: DEFAULT_LARGE_FILE_THRESHOLD,
             num_threads: 0,
             batch_size: DEFAULT_BATCH_SIZE,
@@ -76,6 +82,7 @@ impl Default for ScanConfig {
             recursive: true,
             max_depth: DEFAULT_MAX_DEPTH,
             show_progress: false,
+            progress_interval_ms: DEFAULT_PROGRESS_INTERVAL_MS,
         }
     }
 }
@@ -297,6 +304,12 @@ impl ScanConfigBuilder {
         self
     }
 
+    /// Set progress reporting interval in milliseconds
+    pub fn progress_interval_ms(mut self, interval: u64) -> Self {
+        self.config.progress_interval_ms = interval;
+        self
+    }
+
     /// Build the config
     pub fn build(self) -> ScanConfig {
         self.config
@@ -306,14 +319,33 @@ impl ScanConfigBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn test_default_config() {
         let config = ScanConfig::default();
         assert!(config.roots.is_empty());
-        assert!(config.compute_hash);
+        assert!(!config.compute_hash);
         assert_eq!(config.large_file_threshold, DEFAULT_LARGE_FILE_THRESHOLD);
         assert_eq!(config.batch_size, DEFAULT_BATCH_SIZE);
+        assert_eq!(config.progress_interval_ms, DEFAULT_PROGRESS_INTERVAL_MS);
+    }
+
+    // Property-based tests
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        /// **Feature: scan-progress-enhancement, Property 1: Default hash computation disabled**
+        /// **Validates: Requirements 1.1**
+        ///
+        /// *For any* newly created ScanConfig using default(), the compute_hash field SHALL be false.
+        #[test]
+        fn prop_default_hash_computation_disabled(_seed in any::<u64>()) {
+            // Create a new default config - regardless of any random seed,
+            // the default config should always have compute_hash = false
+            let config = ScanConfig::default();
+            prop_assert!(!config.compute_hash, "Default ScanConfig should have compute_hash = false");
+        }
     }
 
     #[test]
@@ -373,5 +405,13 @@ mod tests {
 
         let auto_config = ScanConfig::default();
         assert!(auto_config.effective_threads() > 0);
+    }
+
+    #[test]
+    fn test_progress_interval_builder() {
+        let config = ScanConfig::builder()
+            .progress_interval_ms(500)
+            .build();
+        assert_eq!(config.progress_interval_ms, 500);
     }
 }

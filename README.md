@@ -53,7 +53,8 @@ media_scanner scan --roots <目录路径>
 | `--ndjson` | - | 以 NDJSON 格式输出（每行一个文件） | false |
 | `--compact` | - | 紧凑格式（按目录分组，字段缩写，推荐大量文件） | false |
 | `--progress` | `-p` | 显示扫描进度（输出到stderr） | false |
-| `--no-hash` | - | 跳过文件哈希计算 | false |
+| `--progress-interval` | - | 进度报告间隔（毫秒） | 200 |
+| `--hash` | - | 启用文件哈希计算（默认不计算） | false |
 | `--no-recursive` | - | 禁用递归扫描（只扫描根目录） | false |
 | `--max-depth` | - | 最大扫描深度 | 3 |
 
@@ -123,6 +124,9 @@ media_scanner scan --roots /path/to/media --compact -o result.ndjson
 
 # 显示扫描进度（进度输出到stderr，不影响JSON）
 media_scanner scan --roots /path/to/media --compact --progress
+
+# 自定义进度报告间隔（毫秒）
+media_scanner scan --roots /path/to/media --compact --progress --progress-interval 500
 ```
 
 #### 7. 高性能扫描配置
@@ -132,10 +136,11 @@ media_scanner scan --roots /path/to/media --compact --progress
 media_scanner scan --roots /path/to/media --threads 8 --batch-size 2000
 ```
 
-#### 8. 快速扫描（跳过哈希计算）
+#### 8. 启用哈希计算
 
 ```bash
-media_scanner scan --roots /path/to/media --no-hash
+# 默认不计算哈希，使用 --hash 启用
+media_scanner scan --roots /path/to/media --hash
 ```
 
 ### 完整示例
@@ -260,15 +265,38 @@ media_scanner scan --roots /path/to/media --json -o result.json
 
 **进度输出示例（stderr）：**
 ```
-{"_t":"p","f":1000,"d":50,"v":800,"i":150,"a":50,"dir":"/media/videos/2024","ms":2500}
-{"_t":"p","f":2000,"d":100,"v":1600,"i":300,"a":100,"dir":"/media/photos","ms":5000}
-{"_t":"p","f":3000,"d":150,"v":2400,"i":450,"a":150,"dir":"完成","ms":7500}
+{"_t":"start","seq":0,"ts":1704067200000,"roots":["/media/videos","/media/photos"],"recursive":true,"max_depth":3,"compute_hash":false}
+{"_t":"p","seq":1,"ts":1704067202500,"phase":"scan","f":1000,"d":50,"v":800,"i":150,"a":50,"dir":"/media/videos/2024","ms":2500}
+{"_t":"err","seq":2,"ts":1704067203000,"error_type":"PermissionDenied","message":"Permission denied","path":"/media/private/secret.mp4"}
+{"_t":"p","seq":3,"ts":1704067205000,"phase":"scan","f":2000,"d":100,"v":1600,"i":300,"a":100,"dir":"/media/photos","ms":5000}
+{"_t":"p","seq":4,"ts":1704067207500,"phase":"process","f":3000,"d":150,"v":2400,"i":450,"a":150,"dir":"完成","ms":7500}
+{"_t":"done","seq":5,"ts":1704067207600,"tf":3000,"td":150,"nf":100,"mf":50,"df":10,"ec":1,"ms":7600}
 ```
 
-**进度字段说明：**
+**进度消息类型说明：**
+| 类型 | `_t` 值 | 说明 |
+|------|---------|------|
+| 开始消息 | `start` | 扫描开始时发送，包含配置信息 |
+| 进度消息 | `p` | 定期发送的进度更新 |
+| 错误消息 | `err` | 遇到错误时立即发送 |
+| 完成消息 | `done` | 扫描完成时发送，包含最终统计 |
+
+**开始消息字段说明 (`_t: "start"`)：**
 | 字段 | 说明 |
 |------|------|
-| `_t` | 类型 (p=progress) |
+| `seq` | 序列号（从0开始） |
+| `ts` | 时间戳（毫秒） |
+| `roots` | 扫描根目录列表 |
+| `recursive` | 是否递归扫描 |
+| `max_depth` | 最大扫描深度 |
+| `compute_hash` | 是否计算哈希 |
+
+**进度消息字段说明 (`_t: "p"`)：**
+| 字段 | 说明 |
+|------|------|
+| `seq` | 序列号（单调递增） |
+| `ts` | 时间戳（毫秒） |
+| `phase` | 扫描阶段 (scan/process/done) |
 | `f` | 已扫描文件数 |
 | `d` | 已扫描目录数 |
 | `v` | 视频文件数 |
@@ -276,6 +304,29 @@ media_scanner scan --roots /path/to/media --json -o result.json
 | `a` | 音频文件数 |
 | `dir` | 当前扫描目录 |
 | `ms` | 已用时间(毫秒) |
+| `eta_ms` | 预计剩余时间(毫秒，可选) |
+
+**错误消息字段说明 (`_t: "err"`)：**
+| 字段 | 说明 |
+|------|------|
+| `seq` | 序列号 |
+| `ts` | 时间戳（毫秒） |
+| `error_type` | 错误类型 |
+| `message` | 错误描述 |
+| `path` | 相关文件路径（可选） |
+
+**完成消息字段说明 (`_t: "done"`)：**
+| 字段 | 说明 |
+|------|------|
+| `seq` | 序列号 |
+| `ts` | 时间戳（毫秒） |
+| `tf` | 总文件数 |
+| `td` | 总目录数 |
+| `nf` | 新文件数 |
+| `mf` | 修改文件数 |
+| `df` | 删除文件数 |
+| `ec` | 错误数 |
+| `ms` | 总耗时(毫秒) |
 
 **增量扫描输出示例：**
 ```
@@ -298,8 +349,23 @@ def read_progress(process):
     for line in process.stderr:
         try:
             data = json.loads(line.strip())
-            if data.get('_t') == 'p':
-                print(f"\r扫描中: {data['f']}文件, {data['v']}视频, {data['i']}图片, {data['a']}音频 - {data['dir'][:50]}", end='', file=sys.stderr)
+            msg_type = data.get('_t')
+            
+            if msg_type == 'start':
+                roots = ', '.join(data['roots'])
+                print(f"开始扫描: {roots} (递归={data['recursive']}, 深度={data['max_depth']}, 哈希={data['compute_hash']})", file=sys.stderr)
+            
+            elif msg_type == 'p':
+                phase = data.get('phase', 'scan')
+                eta = f", 预计剩余{data['eta_ms']}ms" if data.get('eta_ms') else ""
+                print(f"\r[{phase}] {data['f']}文件, {data['v']}视频, {data['i']}图片, {data['a']}音频 - {data['dir'][:50]}{eta}", end='', file=sys.stderr)
+            
+            elif msg_type == 'err':
+                path_info = f" ({data['path']})" if data.get('path') else ""
+                print(f"\n错误: {data['error_type']} - {data['message']}{path_info}", file=sys.stderr)
+            
+            elif msg_type == 'done':
+                print(f"\n扫描完成: 共{data['tf']}文件, {data['td']}目录, 耗时{data['ms']}ms, 错误{data['ec']}个", file=sys.stderr)
         except:
             pass
 
@@ -344,6 +410,15 @@ for line in result.stdout.strip().split('\n'):
     data = json.loads(line)
     if data.get('_t') == 's':
         print(f"新增: {data['nf']}, 修改: {data['mf']}, 删除: {data['df']}")
+
+# 方式3: 自定义进度间隔
+process = subprocess.Popen(
+    ['media_scanner', 'scan', '-r', '/path/to/media', '--compact', '--progress', '--progress-interval', '500'],
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True
+)
+# ... 同方式1处理
 ```
 
 ## 数据库结构
