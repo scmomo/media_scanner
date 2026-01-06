@@ -23,7 +23,7 @@ pub enum ScanErrorKind {
 }
 
 /// Represents an error that occurred during scanning
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 #[error("{kind:?}: {message} (path: {path:?})")]
 pub struct ScanError {
     /// The kind of error
