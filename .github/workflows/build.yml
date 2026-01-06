@@ -23,32 +23,32 @@ jobs:
           # Linux x86_64
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact_name: media-scanner
+            artifact_name: media_scanner
             asset_name: media-scanner-linux-x86_64
 
           # Linux ARM64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact_name: media-scanner
+            artifact_name: media_scanner
             asset_name: media-scanner-linux-arm64
             cross: true
 
           # Windows x86_64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            artifact_name: media-scanner.exe
+            artifact_name: media_scanner.exe
             asset_name: media-scanner-windows-x86_64.exe
 
           # macOS x86_64
           - target: x86_64-apple-darwin
             os: macos-latest
-            artifact_name: media-scanner
+            artifact_name: media_scanner
             asset_name: media-scanner-macos-x86_64
 
           # macOS ARM64 (Apple Silicon)
           - target: aarch64-apple-darwin
             os: macos-latest
-            artifact_name: media-scanner
+            artifact_name: media_scanner
             asset_name: media-scanner-macos-arm64
 
     steps:
