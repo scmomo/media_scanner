@@ -1,2 +1,2 @@
-target/*
-test_media/
+/target/
+/test_media/
