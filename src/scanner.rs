@@ -73,7 +73,7 @@ pub fn scan_incremental(config: &ScanConfig, db: &mut ScanDatabase) -> ScanResul
         }
     };
 
-    let mut result = scan_internal(config, Some(&file_index), config.show_progress);
+    let result = scan_internal(config, Some(&file_index), config.show_progress);
 
     // Update database with changes
     if !result.files.is_empty() {
