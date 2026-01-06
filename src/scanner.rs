@@ -66,17 +66,32 @@ pub fn scan_full_with_progress(config: &ScanConfig, show_progress: bool) -> Scan
 pub fn scan_incremental(config: &ScanConfig, db: &mut ScanDatabase) -> ScanResult {
     // Load existing file index from database
     let file_index = match db.load_file_index() {
-        Ok(index) => index,
+        Ok(index) => {
+            log::info!("Loaded {} files from database for comparison", index.len());
+            if !index.is_empty() {
+                // Log a sample path for debugging
+                if let Some(sample_path) = index.keys().next() {
+                    log::debug!("Sample DB path: {}", sample_path);
+                }
+            }
+            index
+        }
         Err(e) => {
             log::error!("Failed to load file index: {}", e);
             return scan_full(config);
         }
     };
 
+    // If database is empty, this is effectively a full scan
+    if file_index.is_empty() {
+        log::info!("Database is empty, performing full scan");
+    }
+
     let result = scan_internal(config, Some(&file_index), config.show_progress);
 
-    // Update database with changes
+    // Update database with all scanned files (new + modified)
     if !result.files.is_empty() {
+        log::info!("Updating {} files in database", result.files.len());
         if let Err(e) = db.upsert_files(&result.files) {
             log::error!("Failed to update database: {}", e);
         }
@@ -84,6 +99,10 @@ pub fn scan_incremental(config: &ScanConfig, db: &mut ScanDatabase) -> ScanResul
 
     // Delete removed files from database
     if !result.deleted_paths.is_empty() {
+        log::info!(
+            "Deleting {} files from database",
+            result.deleted_paths.len()
+        );
         if let Err(e) = db.delete_files(&result.deleted_paths) {
             log::error!("Failed to delete files from database: {}", e);
         }
@@ -146,7 +165,8 @@ fn scan_internal(
 
                     // Process files
                     if entry.file_type().is_file() {
-                        let path_str = path.to_string_lossy().to_string();
+                        // Normalize path separators for cross-platform consistency
+                        let path_str = normalize_path(path);
                         seen_paths.insert(path_str.clone());
 
                         // Check if file changed (incremental mode)
@@ -174,6 +194,14 @@ fn scan_internal(
                                 }
 
                                 // File modified - process and mark
+                                log::debug!(
+                                    "File modified: {} (size: {} -> {}, mtime: {} -> {})",
+                                    path_str,
+                                    record.size,
+                                    current_size,
+                                    record.mtime,
+                                    current_mtime
+                                );
                                 if let Some(scanned) = process_file(path, config) {
                                     let scanned = scanned.with_status(FileStatus::Modified);
                                     update_media_counts(
@@ -187,6 +215,11 @@ fn scan_internal(
                                     modified_files.fetch_add(1, Ordering::Relaxed);
                                 }
                                 continue;
+                            } else {
+                                // Log first few new files for debugging
+                                if new_files.load(Ordering::Relaxed) < 3 {
+                                    log::debug!("New file (not in DB): {}", path_str);
+                                }
                             }
                         }
 
@@ -368,6 +401,12 @@ fn process_file(path: &Path, config: &ScanConfig) -> Option<ScannedFile> {
     }
 
     Some(scanned)
+}
+
+/// Normalize path separators for cross-platform consistency
+/// Always uses forward slashes for storage and comparison
+fn normalize_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 /// Compute file hash (MD5)

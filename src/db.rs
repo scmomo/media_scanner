@@ -95,10 +95,11 @@ impl ScanDatabase {
             )?;
 
             for file in files {
+                // Normalize path separators for cross-platform consistency
                 let path_str = file
                     .path
                     .as_ref()
-                    .map(|p| p.to_string_lossy().to_string())
+                    .map(|p| p.to_string_lossy().replace('\\', "/"))
                     .unwrap_or_default();
 
                 stmt.execute(params![
