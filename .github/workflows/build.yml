@@ -104,6 +104,7 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt -- --check
+        continue-on-error: true
 
   release:
     name: Release

@@ -66,12 +66,12 @@ impl Default for ScanConfig {
             ignore_dirs: Self::default_ignore_dirs(),
             compute_hash: true,
             large_file_threshold: DEFAULT_LARGE_FILE_THRESHOLD,
-            num_threads: 0, // Auto-detect
+            num_threads: 0,
             batch_size: DEFAULT_BATCH_SIZE,
             checkpoint_interval: DEFAULT_CHECKPOINT_INTERVAL,
             db_path: None,
-            recursive: true,  // Default: scan subdirectories
-            max_depth: DEFAULT_MAX_DEPTH,  // Default: 3 levels
+            recursive: true,
+            max_depth: DEFAULT_MAX_DEPTH,
         }
     }
 }

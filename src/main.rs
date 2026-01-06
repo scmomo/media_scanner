@@ -80,7 +80,14 @@ fn main() {
         } => {
             info!("Starting media scan...");
             info!("Roots: {:?}", roots);
-            info!("Threads: {}", if threads == 0 { "auto".to_string() } else { threads.to_string() });
+            info!(
+                "Threads: {}",
+                if threads == 0 {
+                    "auto".to_string()
+                } else {
+                    threads.to_string()
+                }
+            );
             info!("Batch size: {}", batch_size);
             info!("Incremental: {}", incremental);
             info!("Recursive: {}", !no_recursive);
