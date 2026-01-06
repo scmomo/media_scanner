@@ -26,13 +26,6 @@ jobs:
             artifact_name: media_scanner
             asset_name: media-scanner-linux-x86_64
 
-          # Linux ARM64
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            artifact_name: media_scanner
-            asset_name: media-scanner-linux-arm64
-            cross: true
-
           # Windows x86_64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
@@ -41,7 +34,7 @@ jobs:
 
           # macOS x86_64
           - target: x86_64-apple-darwin
-            os: macos-latest
+            os: macos-13
             artifact_name: media_scanner
             asset_name: media-scanner-macos-x86_64
 
@@ -61,21 +54,8 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools
-        if: matrix.cross
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Build (native)
-        if: ${{ !matrix.cross }}
+      - name: Build
         run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Build (cross)
-        if: matrix.cross
-        run: |
-          cargo install cross --git https://github.com/cross-rs/cross
-          cross build --release --target ${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
