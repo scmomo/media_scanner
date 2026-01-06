@@ -63,11 +63,22 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Rename artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+          chmod +x ${{ matrix.asset_name }}
+
+      - name: Rename artifact (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          copy target\${{ matrix.target }}\release\${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          path: ${{ matrix.asset_name }}
           if-no-files-found: error
 
   test:
@@ -107,22 +118,33 @@ jobs:
         with:
           path: artifacts
 
+      - name: List artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          find artifacts -type f -ls
+
       - name: Prepare release assets
         run: |
           mkdir -p release
           for dir in artifacts/*/; do
             name=$(basename "$dir")
-            if [[ "$name" == *.exe ]]; then
-              cp "$dir"* "release/$name"
-            else
-              cp "$dir"* "release/$name"
-              chmod +x "release/$name"
+            # Find the file in the directory and copy it
+            file=$(find "$dir" -type f | head -1)
+            if [ -n "$file" ]; then
+              cp "$file" "release/$name"
+              # Make executable for non-Windows files
+              if [[ "$name" != *.exe ]]; then
+                chmod +x "release/$name"
+              fi
             fi
           done
+          echo "Release assets:"
           ls -la release/
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: release/*
           generate_release_notes: true
+          draft: false
+          prerelease: false
