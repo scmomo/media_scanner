@@ -8,7 +8,9 @@
 pub mod config;
 pub mod error;
 pub mod models;
+pub mod scanner;
 
 pub use config::ScanConfig;
 pub use error::{ScanError, ScanErrorKind};
 pub use models::{MediaType, ScanProgress, ScanResult, ScannedFile};
+pub use scanner::scan_full;

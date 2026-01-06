@@ -7,7 +7,7 @@ use env_logger::Env;
 use log::info;
 use std::path::PathBuf;
 
-use media_scanner::{ScanConfig, ScanResult};
+use media_scanner::{scan_full, ScanConfig};
 
 const ABOUT: &str = r#"
 Media Scanner - 高性能媒体文件扫描器
@@ -37,10 +37,6 @@ Media Scanner - 高性能媒体文件扫描器
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
-
-    /// 显示帮助信息
-    #[arg(short = 'h', long = "help", action = clap::ArgAction::Help, global = true)]
-    help: Option<bool>,
 }
 
 #[derive(Subcommand)]
@@ -49,39 +45,39 @@ enum Commands {
     #[command(about = "扫描目录中的媒体文件")]
     Scan {
         /// 扫描的根目录（可指定多个）
-        #[arg(short = 'r', long, required = true, help = "扫描的根目录，可多次指定")]
+        #[arg(short = 'r', long, required = true)]
         roots: Vec<PathBuf>,
 
         /// 并行线程数（0 = 自动检测）
-        #[arg(short = 't', long, default_value = "0", help = "并行线程数，0表示自动检测")]
+        #[arg(short = 't', long, default_value = "0")]
         threads: usize,
 
         /// 数据库批量写入大小
-        #[arg(short = 'b', long, default_value = "1000", help = "批量写入数据库的记录数")]
+        #[arg(short = 'b', long, default_value = "1000")]
         batch_size: usize,
 
         /// 数据库文件路径
-        #[arg(short = 'd', long, help = "SQLite数据库文件路径")]
+        #[arg(short = 'd', long)]
         db: Option<PathBuf>,
 
         /// 执行增量扫描
-        #[arg(short = 'i', long, help = "只扫描新增或修改的文件")]
+        #[arg(short = 'i', long)]
         incremental: bool,
 
         /// 以 JSON 格式输出结果
-        #[arg(long, help = "输出JSON格式的扫描结果")]
+        #[arg(long)]
         json: bool,
 
         /// 跳过文件哈希计算
-        #[arg(long, help = "不计算文件哈希值（加快扫描速度）")]
+        #[arg(long)]
         no_hash: bool,
 
         /// 禁用递归扫描（只扫描根目录）
-        #[arg(long, help = "不递归扫描子目录")]
+        #[arg(long)]
         no_recursive: bool,
 
         /// 最大扫描深度
-        #[arg(long, default_value = "3", help = "递归扫描的最大深度")]
+        #[arg(long, default_value = "3")]
         max_depth: usize,
     },
 }
@@ -119,6 +115,8 @@ fn main() {
             info!("Recursive: {}", !no_recursive);
             info!("Max depth: {}", max_depth);
 
+            let _db_path = db.unwrap_or_else(|| PathBuf::from("media_scanner.db"));
+
             let config = ScanConfig::builder()
                 .roots(roots)
                 .num_threads(threads)
@@ -126,29 +124,27 @@ fn main() {
                 .compute_hash(!no_hash)
                 .recursive(!no_recursive)
                 .max_depth(max_depth)
-                .db_path(db.unwrap_or_else(|| PathBuf::from("media_scanner.db")))
                 .build();
 
-            // TODO: Implement actual scanning in later tasks
-            // For now, just log the config to avoid unused variable warning
             info!("Config: {:?}", config);
-            let result = ScanResult::new();
+
+            // Perform the actual scan
+            let result = scan_full(&config);
 
             if json {
                 println!("{}", serde_json::to_string_pretty(&result).unwrap());
             } else {
-                println!("Scan completed:");
-                println!("  Total files: {}", result.total_files);
-                println!("  Total dirs: {}", result.total_dirs);
-                println!("  New files: {}", result.new_files);
-                println!("  Modified files: {}", result.modified_files);
-                println!("  Deleted files: {}", result.deleted_files);
-                println!("  Errors: {}", result.error_count());
-                println!("  Duration: {}ms", result.duration_ms);
+                println!("扫描完成:");
+                println!("  媒体文件数: {}", result.total_files);
+                println!("  目录数: {}", result.total_dirs);
+                println!("  新文件: {}", result.new_files);
+                println!("  修改文件: {}", result.modified_files);
+                println!("  删除文件: {}", result.deleted_files);
+                println!("  错误数: {}", result.error_count());
+                println!("  耗时: {}ms", result.duration_ms);
             }
         }
         None => {
-            // 没有子命令时显示帮助
             println!("{}", ABOUT);
             println!("使用 'media_scanner scan -h' 查看扫描命令的详细帮助");
             println!("使用 'media_scanner --help' 查看完整帮助信息");
